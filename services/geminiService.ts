@@ -48,7 +48,17 @@ export async function generateStory(formData: StoryFormData): Promise<TextOnlySt
         Instruções de Saída:
         - O texto da história deve ser envolvente e apropriado para o público-alvo (${audience}).
         - Cada página deve ter um parágrafo de texto conciso.
-        - Os prompts de imagem devem ser descritivos, focando em ações, emoções e detalhes do cenário, seguindo o estilo de arte "${style}". Eles devem ser otimizados para um modelo de geração de imagem de IA.
+        - Os prompts de imagem são CRÍTICOS. Eles devem ser extremamente detalhados e vívidos para que um modelo de IA de geração de imagem possa criar uma ilustração perfeita.
+        - Para cada prompt de imagem, siga esta estrutura para obter melhores resultados:
+            1.  **Estilo de Arte:** Comece SEMPRE com o estilo de arte especificado: "${style}".
+            2.  **Sujeito Principal:** Descreva claramente o(s) personagem(ns) principal(is) da cena, incluindo suas expressões, roupas e emoções. Ex: "Léo, o coelho curioso com olhos brilhantes e um colete vermelho".
+            3.  **Ação e Pose:** Descreva o que o personagem está fazendo. Ex: "saltitando animadamente por um caminho sinuoso".
+            4.  **Cenário e Fundo:** Pinte um quadro do ambiente com detalhes ricos. Mencione a hora do dia, o clima e os elementos de fundo. Ex: "em uma floresta ensolarada de manhã, com raios de sol passando pelas árvores altas e cogumelos coloridos no chão da floresta".
+            5.  **Composição e Enquadramento:** Dê dicas sobre como a cena deve ser enquadrada. Ex: "close-up", "visão ampla", "visto de baixo".
+            6.  **Iluminação e Cor:** Descreva a iluminação e a paleta de cores para definir o humor. Ex: "iluminação quente e dourada, cores vibrantes e saturadas".
+        - **Exemplo de um prompt de imagem RUIM:** "Coelho na floresta."
+        - **Exemplo de um prompt de imagem BOM:** "${style} de um coelho jovem e curioso chamado Léo, com um colete vermelho, saltitando animadamente por um caminho sinuoso em uma floresta mágica e ensolarada. O fundo está cheio de árvores falantes com rostos amigáveis e riachos cintilantes. Iluminação quente e dourada da manhã, paleta de cores vibrantes. Visão ampla para mostrar a vastidão da floresta."
+        - Certifique-se de que cada prompt de imagem seja exclusivo para a página e reflita o texto da história dessa página.
         - Responda APENAS com um objeto JSON. Não inclua nenhuma formatação markdown ou texto explicativo antes ou depois do JSON.
 
         O objeto JSON deve ter a seguinte estrutura:

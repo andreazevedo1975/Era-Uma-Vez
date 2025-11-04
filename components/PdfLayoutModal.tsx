@@ -127,57 +127,57 @@ const PdfLayoutModal: React.FC<PdfLayoutModalProps> = ({ storybook, onClose }) =
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 animate-fade-in"
+      className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 animate-fade-in"
       onClick={handleOverlayClick}
     >
-      <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-6">
+      <div className="glass-card w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-6 animate-zoom-in">
         <div className="flex justify-between items-start mb-4">
-          <h2 className="text-2xl font-bold text-sky-400">Baixar como PDF</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
-            <CloseIcon className="w-6 h-6" />
+          <h2 className="text-3xl font-bold text-gradient font-display">Baixar como PDF</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <CloseIcon className="w-7 h-7" />
           </button>
         </div>
         <div className="flex-grow overflow-y-auto">
-          <p className="text-gray-300 mb-6">Escolha um layout para o seu livro de histórias em PDF.</p>
+          <p className="text-slate-300 mb-6">Escolha um layout para o seu livro de histórias em PDF.</p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {/* Portrait Layout Option */}
             <div
               onClick={() => setLayout('portrait')}
-              className={`border-4 rounded-lg p-4 cursor-pointer transition-colors ${layout === 'portrait' ? 'border-sky-500' : 'border-gray-600 hover:border-gray-500'}`}
+              className={`border-2 rounded-lg p-4 cursor-pointer transition-all duration-300 ${layout === 'portrait' ? 'border-teal-500 bg-teal-500/10 scale-105' : 'border-slate-600 hover:border-slate-500'}`}
             >
-              <h3 className="font-bold text-lg mb-2 text-center">Retrato</h3>
-              <div className="bg-gray-700 aspect-[210/297] w-full mx-auto rounded p-2 flex flex-col gap-2">
-                <div className="bg-gray-500 h-1/2 w-full rounded-sm"></div>
-                <div className="bg-gray-600 h-1 w-5/6 rounded-sm mt-1"></div>
-                <div className="bg-gray-600 h-1 w-full rounded-sm"></div>
-                <div className="bg-gray-600 h-1 w-4/6 rounded-sm"></div>
+              <h3 className="font-bold text-lg mb-2 text-center text-slate-100">Retrato</h3>
+              <div className="bg-slate-700 aspect-[210/297] w-full mx-auto rounded p-2 flex flex-col gap-2">
+                <div className="bg-slate-500 h-1/2 w-full rounded-sm"></div>
+                <div className="bg-slate-600 h-1 w-5/6 rounded-sm mt-1"></div>
+                <div className="bg-slate-600 h-1 w-full rounded-sm"></div>
+                <div className="bg-slate-600 h-1 w-4/6 rounded-sm"></div>
               </div>
             </div>
 
             {/* Landscape Layout Option */}
             <div
               onClick={() => setLayout('landscape')}
-              className={`border-4 rounded-lg p-4 cursor-pointer transition-colors ${layout === 'landscape' ? 'border-sky-500' : 'border-gray-600 hover:border-gray-500'}`}
+              className={`border-2 rounded-lg p-4 cursor-pointer transition-all duration-300 ${layout === 'landscape' ? 'border-teal-500 bg-teal-500/10 scale-105' : 'border-slate-600 hover:border-slate-500'}`}
             >
-              <h3 className="font-bold text-lg mb-2 text-center">Paisagem</h3>
-              <div className="bg-gray-700 aspect-[297/210] w-full mx-auto rounded p-2 flex gap-2">
-                <div className="bg-gray-500 h-full w-1/2 rounded-sm"></div>
+              <h3 className="font-bold text-lg mb-2 text-center text-slate-100">Paisagem</h3>
+              <div className="bg-slate-700 aspect-[297/210] w-full mx-auto rounded p-2 flex gap-2">
+                <div className="bg-slate-500 h-full w-1/2 rounded-sm"></div>
                 <div className="flex flex-col gap-2 w-1/2 mt-1">
-                    <div className="bg-gray-600 h-1 w-5/6 rounded-sm"></div>
-                    <div className="bg-gray-600 h-1 w-full rounded-sm"></div>
-                    <div className="bg-gray-600 h-1 w-4/6 rounded-sm"></div>
+                    <div className="bg-slate-600 h-1 w-5/6 rounded-sm"></div>
+                    <div className="bg-slate-600 h-1 w-full rounded-sm"></div>
+                    <div className="bg-slate-600 h-1 w-4/6 rounded-sm"></div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-gray-700">
+        <div className="mt-8 pt-6 border-t border-slate-700">
           <button
             onClick={handleDownload}
             disabled={isGenerating}
-            className="w-full flex justify-center items-center gap-3 py-3 px-6 bg-sky-600 hover:bg-sky-700 rounded-md text-lg font-semibold transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
+            className="w-full flex justify-center items-center gap-3 py-3 px-6 bg-gradient-to-r from-teal-500 to-sky-600 hover:from-teal-600 hover:to-sky-700 rounded-lg text-lg text-white font-bold shadow-lg transition-transform transform hover:scale-105 disabled:from-slate-500 disabled:to-slate-600 disabled:cursor-not-allowed disabled:scale-100"
           >
             {isGenerating ? (
               <>

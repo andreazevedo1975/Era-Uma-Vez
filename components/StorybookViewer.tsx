@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Storybook, ImageForEditing, StoryPage, StoryCover } from '../types';
 import LoadingSpinner from './LoadingSpinner';
-import { ChevronLeftIcon, ChevronRightIcon, RestartIcon, PencilIcon, VolumeUpIcon, DownloadIcon, BookOpenIcon } from './Icons';
+import { ChevronLeftIcon, ChevronRightIcon, RestartIcon, PencilIcon, VolumeUpIcon, DownloadIcon, BookOpenIcon, FocusIcon, FileCodeIcon, ShareIcon, FullscreenIcon, MinimizeIcon, SaveIcon } from './Icons';
 import PdfLayoutModal from './PdfLayoutModal';
+import FocusModeOverlay from './FocusModeOverlay';
 
 // FIX: Added audio decoding helper functions according to Gemini API guidelines for raw PCM audio data.
 function decode(base64: string) {
@@ -34,6 +36,135 @@ async function decodeAudioData(
   return buffer;
 }
 
+const generateInteractiveHtml = (storybook: Storybook): string => {
+    const { cover, pages } = storybook;
+  
+    const pagesHtml = [cover, ...pages].map((page, index) => {
+      const isCover = index === 0;
+      const content = isCover
+        ? `
+          <div class="text-center">
+              <h1 class="text-4xl font-bold" style="color: #2dd4bf;">${(page as StoryCover).title}</h1>
+              <p class="text-xl text-slate-300 mt-2">por ${(page as StoryCover).author}</p>
+          </div>
+        `
+        : `<p class="text-slate-300 leading-relaxed text-lg whitespace-pre-wrap">${(page as StoryPage).text}</p>`;
+  
+      return `
+        <div id="page-${index}" class="page-container hidden w-full">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div class="relative w-full aspect-[4/3] bg-slate-700 rounded-lg overflow-hidden shadow-lg flex items-center justify-center">
+              ${page.imageUrl ? `<img src="${page.imageUrl}" class="w-full h-full object-cover">` : '<div class="text-white">A imagem não está disponível</div>'}
+            </div>
+            <div class="bg-slate-800/50 rounded-lg p-6 shadow-lg h-full flex items-center justify-center min-h-[300px] lg:min-h-0">
+              ${content}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  
+    return `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${cover.title}</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+        <style>
+          body { 
+            font-family: 'Nunito', sans-serif;
+            background: linear-gradient(-45deg, #1f2937, #3730a3, #1e293b, #4a0e91);
+            background-size: 400% 400%;
+            animation: gradientBG 20s ease infinite;
+          }
+           @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+          }
+          .page-container {
+              animation: fadeIn 0.5s ease-out forwards;
+          }
+          @keyframes fadeIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+          }
+          .icon {
+              width: 2rem;
+              height: 2rem;
+              stroke: currentColor;
+          }
+        </style>
+      </head>
+      <body class="text-white">
+        <main class="min-h-screen flex flex-col items-center justify-center p-4">
+          <div class="w-full max-w-7xl mx-auto">
+            <header class="flex justify-between items-center mb-4">
+              <h1 class="text-2xl font-bold" style="color: #2dd4bf;">${cover.title}</h1>
+            </header>
+            
+            <div id="storybook-content" class="relative">
+              ${pagesHtml}
+            </div>
+  
+            <footer class="mt-6 flex justify-center items-center gap-4">
+              <button id="prev-btn" class="p-3 bg-slate-700 rounded-full hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" aria-label="Página anterior">
+                <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+              <span id="page-counter" class="text-lg font-semibold w-48 text-center"></span>
+              <button id="next-btn" class="p-3 bg-slate-700 rounded-full hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" aria-label="Próxima página">
+                <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+              </button>
+            </footer>
+          </div>
+        </main>
+  
+        <script>
+          const pages = document.querySelectorAll('.page-container');
+          const prevBtn = document.getElementById('prev-btn');
+          const nextBtn = document.getElementById('next-btn');
+          const pageCounter = document.getElementById('page-counter');
+          const totalPages = pages.length;
+          let currentPageIndex = 0;
+  
+          function showPage(index) {
+            pages.forEach((page, i) => {
+              page.classList.toggle('hidden', i !== index);
+            });
+            if (index === 0) {
+              pageCounter.textContent = 'Capa';
+            } else {
+              pageCounter.textContent = \`Página \${index} de \${totalPages - 1}\`;
+            }
+            prevBtn.disabled = index === 0;
+            nextBtn.disabled = index === totalPages - 1;
+          }
+  
+          prevBtn.addEventListener('click', () => {
+            if (currentPageIndex > 0) {
+              currentPageIndex--;
+              showPage(currentPageIndex);
+            }
+          });
+  
+          nextBtn.addEventListener('click', () => {
+            if (currentPageIndex < totalPages - 1) {
+              currentPageIndex++;
+              showPage(currentPageIndex);
+            }
+          });
+  
+          showPage(currentPageIndex);
+        </script>
+      </body>
+      </html>
+    `;
+  };
 
 interface StorybookViewerProps {
   storybook: Storybook;
@@ -71,7 +202,7 @@ const playAudio = async (base64Audio: string, onEnded: () => void): Promise<(() 
 
     } catch (e) {
         console.error("Failed to play audio:", e);
-        alert("Failed to play audio.");
+        alert("Falha ao tocar o áudio.");
         if (audioContext) {
             audioContext.close();
         }
@@ -83,6 +214,11 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
     const [currentPageIndex, setCurrentPageIndex] = useState<number>(0); // 0 is cover
     const [isNarrating, setIsNarrating] = useState(false);
     const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+    const [focusModeElement, setFocusModeElement] = useState<'image' | 'text' | null>(null);
+    const [transitionDirection, setTransitionDirection] = useState<'next' | 'prev' | null>(null);
+    const [shareStatus, setShareStatus] = useState<'idle' | 'copied'>('idle');
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
+    const [isFullscreen, setIsFullscreen] = useState(false);
     
     const stopNarrationRef = useRef<(() => void) | null>(null);
 
@@ -103,15 +239,37 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
         };
     }, [currentPageIndex]);
 
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(!!document.fullscreenElement);
+        };
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, []);
+
+    const toggleFullscreen = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(err => {
+              alert(`Erro ao tentar habilitar o modo de tela cheia: ${err.message} (${err.name})`);
+            });
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            }
+        }
+    };
+
 
     const handlePrev = () => {
         if (currentPageIndex > 0) {
+            setTransitionDirection('prev');
             setCurrentPageIndex(currentPageIndex - 1);
         }
     };
 
     const handleNext = () => {
         if (!isLastPage) {
+            setTransitionDirection('next');
             setCurrentPageIndex(currentPageIndex + 1);
         }
     };
@@ -143,7 +301,7 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
             return;
         }
 
-        const textToNarrate = isCover ? `Title: ${storybook.cover.title}. By ${storybook.cover.author}` : storybook.pages[currentPageIndex - 1].text;
+        const textToNarrate = isCover ? `Título: ${storybook.cover.title}. Por ${storybook.cover.author}` : storybook.pages[currentPageIndex - 1].text;
         setIsNarrating(true);
         try {
             const base64Audio = await onGenerateSpeech(textToNarrate);
@@ -166,33 +324,109 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
         }
     };
 
+    const handleDownloadInteractive = () => {
+        if (!storybook) return;
+        try {
+            const htmlContent = generateInteractiveHtml(storybook);
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${storybook.cover.title.replace(/\s/g, '_')}_interactive.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Falha ao criar o download do storybook interativo:", error);
+            alert("Ocorreu um erro ao preparar o storybook interativo.");
+        }
+    };
+
+    const handleShare = async () => {
+      if (!storybook) return;
+  
+      const storyString = JSON.stringify(storybook);
+      const base64Story = btoa(unescape(encodeURIComponent(storyString))); // Handle UTF-8 characters
+      const url = new URL(window.location.href);
+      url.search = ''; // Clear existing params
+      url.searchParams.set('story', base64Story);
+      const shareableLink = url.toString();
+  
+      const shareData = {
+          title: `Era Uma Vez: ${storybook.cover.title}`,
+          text: `Confira esta história que criei: "${storybook.cover.title}"`,
+          url: shareableLink,
+      };
+  
+      if (navigator.share) {
+          try {
+              await navigator.share(shareData);
+          } catch (err) {
+              console.error("Share failed:", err);
+          }
+      } else {
+          try {
+              await navigator.clipboard.writeText(shareableLink);
+              setShareStatus('copied');
+              setTimeout(() => setShareStatus('idle'), 2000);
+          } catch (err) {
+              console.error("Failed to copy:", err);
+              alert("Falha ao copiar o link. O link é muito longo para a área de transferência.");
+          }
+      }
+    };
+
+    const handleSave = () => {
+        try {
+            const storyString = JSON.stringify(storybook);
+            localStorage.setItem('eraUmaVez_savedStory', storyString);
+            setSaveStatus('saved');
+            setTimeout(() => setSaveStatus('idle'), 2000); // Reset after 2 seconds
+        } catch (error) {
+            console.error("Falha ao salvar a história no localStorage:", error);
+            alert("Não foi possível salvar a história. O armazenamento local pode estar cheio ou indisponível.");
+        }
+    };
+
     const renderPageContent = () => {
         const { imageUrl, isGeneratingImage } = currentContent;
 
         return (
-            <div className="relative w-full aspect-[4/3] bg-gray-700 rounded-lg overflow-hidden shadow-lg flex items-center justify-center">
+            <div className="relative w-full aspect-[4/3] bg-slate-800 rounded-lg overflow-hidden shadow-2xl flex items-center justify-center border border-slate-700">
                 {isGeneratingImage ? (
                     <div className="flex flex-col items-center gap-4 text-white">
                         <LoadingSpinner size="12" />
                         <span>Ilustrando...</span>
                     </div>
                 ) : imageUrl ? (
-                     <img src={imageUrl} alt={isCover ? storybook.cover.title : `Page ${currentPageIndex}`} className="w-full h-full object-cover" />
+                     <img src={imageUrl} alt={isCover ? storybook.cover.title : `Página ${currentPageIndex}`} className="w-full h-full object-cover" />
                 ) : (
-                    <div className="text-center text-gray-400 p-4">
+                    <div className="text-center text-slate-400 p-4">
                         <p>Falha ao gerar a imagem.</p>
                         <p>Tente editar para criar uma nova.</p>
                     </div>
                 )}
-                 <button 
-                    onClick={handleEditClick} 
-                    className="absolute top-4 right-4 bg-black bg-opacity-50 hover:bg-opacity-75 text-white p-2 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={isGeneratingImage || !imageUrl}
-                    aria-label="Editar imagem"
-                    title="Editar Imagem"
-                >
-                    <PencilIcon className="w-6 h-6" />
-                </button>
+                <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <button
+                        onClick={() => setFocusModeElement('image')}
+                        className="bg-black/50 hover:bg-black/75 backdrop-blur-sm text-white p-2 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isGeneratingImage || !imageUrl}
+                        aria-label="Focar na imagem"
+                        title="Modo de Foco"
+                    >
+                        <FocusIcon className="w-6 h-6" />
+                    </button>
+                    <button
+                        onClick={handleEditClick}
+                        className="bg-black/50 hover:bg-black/75 backdrop-blur-sm text-white p-2 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isGeneratingImage || !imageUrl}
+                        aria-label="Editar imagem"
+                        title="Editar Imagem"
+                    >
+                        <PencilIcon className="w-6 h-6" />
+                    </button>
+                </div>
             </div>
         );
     };
@@ -201,96 +435,128 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
         if (isCover) {
             return (
                 <div className="text-center">
-                    <h1 className="text-4xl font-bold text-sky-400">{storybook.cover.title}</h1>
-                    <p className="text-xl text-gray-300 mt-2">por {storybook.cover.author}</p>
+                    <h1 className="text-4xl font-bold text-teal-400">{storybook.cover.title}</h1>
+                    <p className="text-xl text-slate-300 mt-2">por {storybook.cover.author}</p>
                 </div>
             );
         }
         const page = storybook.pages[currentPageIndex - 1];
         return (
-            <p className="text-gray-300 leading-relaxed text-lg whitespace-pre-wrap">{page.text}</p>
+            <p className="text-slate-300 leading-relaxed text-lg whitespace-pre-wrap">{page.text}</p>
         );
     };
 
     return (
-        <div className="w-full max-w-7xl mx-auto p-4 animate-fade-in">
-            <header className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-2">
-                    <BookOpenIcon className="w-8 h-8 text-sky-400" />
-                    <h1 className="text-2xl font-bold text-white">{storybook.cover.title}</h1>
+        <div className={`w-full max-w-7xl mx-auto p-4 animate-fade-in ${isFullscreen ? 'h-screen flex flex-col justify-center' : ''}`}>
+             <header className={`glass-card flex justify-between items-center mb-6 p-2 ${isFullscreen ? 'hidden' : ''}`}>
+                {/* Left Side: Title */}
+                <div className="flex items-center gap-3 pl-2 flex-1 min-w-0">
+                    <BookOpenIcon className="w-6 h-6 text-teal-400 flex-shrink-0" />
+                    <h1 className="text-lg font-bold text-white truncate" title={storybook.cover.title}>
+                        {storybook.cover.title}
+                    </h1>
                 </div>
-                <div className="flex items-center gap-4">
-                     <button
-                        onClick={() => setIsPdfModalOpen(true)}
-                        className="flex items-center gap-2 py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-md transition-colors"
-                        title="Baixar como PDF"
-                    >
-                        <DownloadIcon className="w-5 h-5" />
-                        <span className="hidden sm:inline">Baixar PDF</span>
+
+                {/* Right Side: Action Buttons */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    <button onClick={toggleFullscreen} className="flex items-center gap-2 py-2 px-3 rounded-lg transition-colors text-sm font-semibold bg-slate-700/60 hover:bg-slate-700/90 text-white" title={isFullscreen ? "Sair do modo de tela cheia" : "Entrar em modo de tela cheia"}>
+                        {isFullscreen ? <MinimizeIcon className="w-5 h-5" /> : <FullscreenIcon className="w-5 h-5" />}
+                        <span>{isFullscreen ? 'Minimizar' : 'Tela Cheia'}</span>
                     </button>
-                    <button
-                        onClick={onRestart}
-                        className="flex items-center gap-2 py-2 px-4 bg-orange-600 hover:bg-orange-700 rounded-md transition-colors"
-                        title="Começar de Novo"
-                    >
+                    <button onClick={handleShare} className="flex items-center gap-2 py-2 px-3 rounded-lg transition-colors text-sm font-semibold bg-slate-700/60 hover:bg-slate-700/90 text-white" title="Compartilhar um link para esta história">
+                        <ShareIcon className="w-5 h-5" />
+                        <span>{shareStatus === 'copied' ? 'Copiado!' : 'Compartilhar'}</span>
+                    </button>
+                    <button onClick={handleSave} className="flex items-center gap-2 py-2 px-3 rounded-lg transition-colors text-sm font-semibold bg-slate-700/60 hover:bg-slate-700/90 text-white" title="Salvar esta história em seu navegador para visualizá-la mais tarde">
+                        <SaveIcon className="w-5 h-5" />
+                        <span>{saveStatus === 'saved' ? 'Salvo!' : 'Salvar'}</span>
+                    </button>
+                    <button onClick={handleDownloadInteractive} className="flex items-center gap-2 py-2 px-3 rounded-lg transition-colors text-sm font-semibold bg-slate-700/60 hover:bg-slate-700/90 text-white" title="Baixar um arquivo HTML interativo desta história">
+                        <FileCodeIcon className="w-5 h-5" />
+                        <span>Interativo</span>
+                    </button>
+                    <button onClick={() => setIsPdfModalOpen(true)} className="flex items-center gap-2 py-2 px-3 rounded-lg transition-colors text-sm font-semibold bg-slate-700/60 hover:bg-slate-700/90 text-white" title="Abrir opções para baixar um arquivo PDF da história">
+                        <DownloadIcon className="w-5 h-5" />
+                        <span>PDF</span>
+                    </button>
+                    <button onClick={onRestart} className="flex items-center gap-2 py-2 px-3 rounded-lg transition-all text-sm font-semibold bg-gradient-to-r from-orange-500 to-red-600 text-white transform hover:scale-105" title="Descartar esta história e criar uma nova">
                         <RestartIcon className="w-5 h-5" />
-                        <span className="hidden sm:inline">Começar de Novo</span>
+                        <span>Novo</span>
                     </button>
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div 
+                key={currentPageIndex}
+                className={`grid grid-cols-1 lg:grid-cols-2 gap-8 items-center ${
+                    transitionDirection === 'next' ? 'animate-page-flip' :
+                    transitionDirection === 'prev' ? 'animate-zoom-in-slightly' : ''
+                }`}
+            >
                 {/* Image Side */}
                 <div className="flex flex-col items-center">
                    {renderPageContent()}
                 </div>
 
                 {/* Text Side */}
-                <div className="bg-gray-800 rounded-lg p-6 shadow-lg h-full flex flex-col justify-between min-h-[300px] lg:min-h-0">
-                    <div className="flex-grow overflow-y-auto">
+                <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-6 shadow-2xl h-full flex flex-col justify-between min-h-[450px] lg:min-h-0 relative">
+                    <button onClick={() => setFocusModeElement('text')} className="absolute top-4 right-4 bg-slate-700/80 hover:bg-slate-600/80 text-white p-2 rounded-full transition-all z-10" aria-label="Focar no texto" title="Modo de Foco">
+                        <FocusIcon className="w-5 h-5" />
+                    </button>
+                    <div className="flex-grow overflow-y-auto pr-4">
                         {renderTextContent()}
                     </div>
-                    <div className="mt-4 pt-4 border-t border-gray-700 flex justify-between items-center">
-                         <button
-                            onClick={handleNarrateClick}
-                            className="flex items-center gap-2 py-2 px-4 bg-sky-600 hover:bg-sky-700 rounded-md transition-colors disabled:bg-gray-500"
-                            disabled={!currentContent}
-                        >
+                    <div className="mt-4 pt-4 border-t border-slate-700 flex items-center gap-4">
+                         <button onClick={handleNarrateClick} className="flex items-center gap-2 py-2 px-4 bg-gradient-to-r from-teal-500 to-sky-600 hover:from-teal-600 hover:to-sky-700 rounded-lg text-white font-semibold shadow-lg transition-transform transform hover:scale-105 disabled:from-slate-500 disabled:to-slate-600 disabled:cursor-not-allowed disabled:scale-100" disabled={!currentContent}>
                             <VolumeUpIcon className="w-6 h-6" />
                             <span>{isNarrating ? 'Parar' : 'Narrar'}</span>
                         </button>
-                         <div className="text-gray-400 font-semibold">
-                           {isCover ? "Capa" : `Página ${currentPageIndex} de ${totalPages - 1}`}
-                        </div>
+                        <button onClick={handleEditClick} className="flex items-center gap-2 py-2 px-4 bg-slate-600/80 hover:bg-slate-500/80 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={currentContent.isGeneratingImage || !currentContent.imageUrl} title="Editar Imagem">
+                            <PencilIcon className="w-5 h-5" />
+                            <span>Editar Imagem</span>
+                        </button>
                     </div>
                 </div>
             </div>
 
              {/* Navigation */}
-            <footer className="mt-6 flex justify-center items-center gap-4">
-                 <button
-                    onClick={handlePrev}
-                    disabled={currentPageIndex === 0}
-                    className="p-3 bg-gray-700 rounded-full hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    aria-label="Página anterior"
-                >
+            <footer className={`mt-6 flex justify-center items-center gap-4 ${isFullscreen ? 'hidden' : ''}`}>
+                 <button onClick={handlePrev} disabled={currentPageIndex === 0} className="p-3 bg-slate-800/80 border border-slate-700 rounded-full hover:bg-teal-500 text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all transform hover:scale-110" aria-label="Página anterior">
                     <ChevronLeftIcon className="w-8 h-8" />
                 </button>
-                 <span className="text-lg font-semibold">{currentPageIndex + 1} / {totalPages}</span>
-                <button
-                    onClick={handleNext}
-                    disabled={isLastPage}
-                    className="p-3 bg-gray-700 rounded-full hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    aria-label="Próxima página"
-                >
+                 <span className="text-lg font-semibold w-48 text-center text-slate-300">
+                    {isCover
+                        ? 'Capa'
+                        : `Página ${currentPageIndex} de ${totalPages - 1}`
+                    }
+                 </span>
+                <button onClick={handleNext} disabled={isLastPage} className="p-3 bg-slate-800/80 border border-slate-700 rounded-full hover:bg-teal-500 text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all transform hover:scale-110" aria-label="Próxima página">
                     <ChevronRightIcon className="w-8 h-8" />
                 </button>
             </footer>
 
+            {/* FIX: Corrected typo from isPdfModalОpen to isPdfModalOpen */}
             {isPdfModalOpen && (
                 <PdfLayoutModal 
                     storybook={storybook}
                     onClose={() => setIsPdfModalOpen(false)}
+                />
+            )}
+
+            {focusModeElement && (
+                <FocusModeOverlay
+                    element={focusModeElement}
+                    content={
+                        focusModeElement === 'image'
+                            ? currentContent.imageUrl
+                            : (isCover ? `${storybook.cover.title}\n\npor ${storybook.cover.author}` : (currentContent as StoryPage).text)
+                    }
+                    title={
+                        focusModeElement === 'image'
+                            ? (isCover ? "Ilustração da Capa" : `Ilustração - Página ${currentPageIndex}`)
+                            : (isCover ? "Texto da Capa" : `Texto - Página ${currentPageIndex}`)
+                    }
+                    onClose={() => setFocusModeElement(null)}
                 />
             )}
         </div>

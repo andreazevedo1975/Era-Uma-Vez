@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from 'react';
+
+import React, { useState, useCallback, useEffect } from 'react';
 import { StoryFormData, Storybook, ImageForEditing } from './types';
 import StoryForm from './components/StoryForm';
 import StoryPreview from './components/StoryPreview';
@@ -21,6 +22,47 @@ const App: React.FC = () => {
     const [imageForEditing, setImageForEditing] = useState<ImageForEditing | null>(null);
     const [errorMessage, setErrorMessage] = useState('');
 
+    useEffect(() => {
+        // Check for shared story in URL on initial load
+        const params = new URLSearchParams(window.location.search);
+        const storyDataFromUrl = params.get('story');
+
+        // Priority 1: Load from URL
+        if (storyDataFromUrl) {
+            try {
+                const decodedString = decodeURIComponent(atob(storyDataFromUrl));
+                const parsedStorybook = JSON.parse(decodedString);
+
+                if (parsedStorybook && parsedStorybook.cover && parsedStorybook.pages) {
+                    setStorybook(parsedStorybook);
+                    setAppState('VIEWING');
+                    // Clean the URL to avoid re-loading the same story on refresh
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    return; // Exit early if loaded from URL
+                }
+            } catch (error) {
+                console.error("Failed to load story from URL:", error);
+                alert("Não foi possível carregar a história compartilhada. O link pode estar corrompido.");
+                 window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+
+        // Priority 2: Load from localStorage if no URL story was found/loaded
+        try {
+            const savedStoryString = localStorage.getItem('eraUmaVez_savedStory');
+            if (savedStoryString) {
+                const parsedStorybook = JSON.parse(savedStoryString);
+                if (parsedStorybook && parsedStorybook.cover && parsedStorybook.pages) {
+                    setStorybook(parsedStorybook);
+                    setAppState('VIEWING');
+                }
+            }
+        } catch (error) {
+            console.error("Failed to load story from localStorage:", error);
+            localStorage.removeItem('eraUmaVez_savedStory'); // Clean up corrupted data
+        }
+    }, []);
+
     const handleError = (message: string, error?: any) => {
         console.error(message, error);
         setErrorMessage(message);
@@ -29,8 +71,20 @@ const App: React.FC = () => {
 
     const handleGenerateStory = async (formData: StoryFormData) => {
         setAppState('GENERATING_STORY');
+
+        // Helper to remove emoji prefixes used for display in the form
+        const stripPrefix = (str: string) => str.split(' ').slice(1).join(' ');
+
+        const cleanFormData: StoryFormData = {
+            ...formData,
+            genre: stripPrefix(formData.genre),
+            tone: stripPrefix(formData.tone),
+            audience: stripPrefix(formData.audience),
+            style: stripPrefix(formData.style),
+        };
+
         try {
-            const storyTextContent = await geminiService.generateStory(formData);
+            const storyTextContent = await geminiService.generateStory(cleanFormData);
             setTextOnlyStory(storyTextContent);
             setAppState('PREVIEW');
         } catch (error) {
@@ -170,6 +224,14 @@ const App: React.FC = () => {
         setTextOnlyStory(null);
         setImageForEditing(null);
         setErrorMessage('');
+        // Clear any query params from URL when restarting
+        window.history.replaceState({}, document.title, window.location.pathname);
+        // Also clear the saved story from localStorage
+        try {
+            localStorage.removeItem('eraUmaVez_savedStory');
+        } catch (error) {
+            console.error("Não foi possível remover a história salva do localStorage", error);
+        }
         setAppState('FORM');
     };
 
@@ -213,16 +275,21 @@ const App: React.FC = () => {
                         </>
                     );
                 }
-                handleError("Estado de visualização inválido: nenhum storybook encontrado.");
-                return null;
+                // If we land here from a shared link, we might not have a story yet.
+                // A loading indicator could be shown, but for now, we show the error/form.
+                if (!window.location.search.includes('story')) {
+                    handleError("Estado de visualização inválido: nenhum storybook encontrado.");
+                }
+                return <StoryForm onSubmit={handleGenerateStory} isGenerating={false} />;
+
             case 'ERROR':
                 return (
-                    <div className="text-center p-8 max-w-2xl mx-auto bg-gray-800 rounded-lg shadow-lg">
+                    <div className="text-center p-8 max-w-2xl mx-auto glass-card">
                         <h2 className="text-2xl font-bold text-red-500 mb-4">Ocorreu um Erro</h2>
-                        <p className="text-gray-300 mb-6">{errorMessage}</p>
+                        <p className="text-slate-300 mb-6">{errorMessage}</p>
                         <button
                             onClick={handleRestart}
-                            className="flex items-center justify-center gap-2 py-3 px-6 bg-orange-600 hover:bg-orange-700 rounded-md text-lg"
+                            className="flex items-center justify-center gap-2 py-3 px-6 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 rounded-lg text-lg text-white font-semibold shadow-lg transition-transform transform hover:scale-105"
                         >
                             <RestartIcon className="w-6 h-6" />
                             <span>Tentar Novamente</span>
@@ -235,7 +302,7 @@ const App: React.FC = () => {
     };
     
     return (
-        <main className="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+        <main className="w-full min-h-screen flex flex-col items-center justify-center p-4">
             <div className="w-full">
                 {renderContent()}
             </div>
