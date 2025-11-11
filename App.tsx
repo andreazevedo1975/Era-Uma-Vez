@@ -129,30 +129,29 @@ const App: React.FC = () => {
             });
         }
 
-        // BUGFIX: Generate page images in parallel for a massive speed boost.
-        const pageImagePromises = textOnlyStory.pages.map((page, index) => 
-            geminiService.generateImage(page.imagePrompt)
-                .then(({ base64Image, mimeType }) => {
-                    const imageUrl = `data:${mimeType};base64,${base64Image}`;
-                    setStorybook(current => {
-                        if (!current) return null;
-                        const newPages = [...current.pages];
-                        newPages[index] = { ...newPages[index], imageUrl, isGeneratingImage: false, mimeType };
-                        return { ...current, pages: newPages };
-                    });
-                })
-                .catch(error => {
-                    console.error(`Falha ao gerar imagem para a página ${index + 1}:`, error);
-                    setStorybook(current => {
-                        if (!current) return null;
-                        const newPages = [...current.pages];
-                        newPages[index] = { ...newPages[index], imageUrl: '', isGeneratingImage: false };
-                        return { ...current, pages: newPages };
-                    });
-                })
-        );
-
-        await Promise.all(pageImagePromises);
+        // Generate page images sequentially to avoid API rate limiting.
+        // The previous parallel implementation (Promise.all) was faster but
+        // caused "quota exceeded" errors with the Gemini API.
+        for (const [index, page] of textOnlyStory.pages.entries()) {
+            try {
+                const { base64Image, mimeType } = await geminiService.generateImage(page.imagePrompt);
+                const imageUrl = `data:${mimeType};base64,${base64Image}`;
+                setStorybook(current => {
+                    if (!current) return null;
+                    const newPages = [...current.pages];
+                    newPages[index] = { ...newPages[index], imageUrl, isGeneratingImage: false, mimeType };
+                    return { ...current, pages: newPages };
+                });
+            } catch (error) {
+                console.error(`Falha ao gerar imagem para a página ${index + 1}:`, error);
+                setStorybook(current => {
+                    if (!current) return null;
+                    const newPages = [...current.pages];
+                    newPages[index] = { ...newPages[index], imageUrl: '', isGeneratingImage: false };
+                    return { ...current, pages: newPages };
+                });
+            }
+        }
     };
 
     const handleStartImageEdit = (image: ImageForEditing) => {
