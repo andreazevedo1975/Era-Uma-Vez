@@ -3,7 +3,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { StoryFormData, Storybook, ImageForEditing } from './types';
 import StoryForm from './components/StoryForm';
 import StoryPreview from './components/StoryPreview';
-import StorybookViewer from './components/StorybookViewer';
+import { StorybookViewer } from './components/StorybookViewer';
 import ImageEditorModal from './components/ImageEditorModal';
 import * as geminiService from './services/geminiService';
 import { RestartIcon } from './components/Icons';
@@ -23,31 +23,33 @@ const App: React.FC = () => {
     const [errorMessage, setErrorMessage] = useState('');
 
     useEffect(() => {
-        // Check for shared story in URL on initial load
         const params = new URLSearchParams(window.location.search);
         const storyDataFromUrl = params.get('story');
 
-        // Priority 1: Load from URL
         if (storyDataFromUrl) {
             try {
-                const decodedString = decodeURIComponent(atob(storyDataFromUrl));
+                // BUGFIX: Use a robust method to decode Base64 to a Unicode string.
+                const binaryString = atob(storyDataFromUrl);
+                const uint8Array = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    uint8Array[i] = binaryString.charCodeAt(i);
+                }
+                const decodedString = new TextDecoder().decode(uint8Array);
                 const parsedStorybook = JSON.parse(decodedString);
 
                 if (parsedStorybook && parsedStorybook.cover && parsedStorybook.pages) {
                     setStorybook(parsedStorybook);
                     setAppState('VIEWING');
-                    // Clean the URL to avoid re-loading the same story on refresh
                     window.history.replaceState({}, document.title, window.location.pathname);
-                    return; // Exit early if loaded from URL
+                    return;
                 }
             } catch (error) {
-                console.error("Failed to load story from URL:", error);
+                console.error("Falha ao carregar a história da URL:", error);
                 alert("Não foi possível carregar a história compartilhada. O link pode estar corrompido.");
-                 window.history.replaceState({}, document.title, window.location.pathname);
+                window.history.replaceState({}, document.title, window.location.pathname);
             }
         }
 
-        // Priority 2: Load from localStorage if no URL story was found/loaded
         try {
             const savedStoryString = localStorage.getItem('eraUmaVez_savedStory');
             if (savedStoryString) {
@@ -58,8 +60,8 @@ const App: React.FC = () => {
                 }
             }
         } catch (error) {
-            console.error("Failed to load story from localStorage:", error);
-            localStorage.removeItem('eraUmaVez_savedStory'); // Clean up corrupted data
+            console.error("Falha ao carregar a história do localStorage:", error);
+            localStorage.removeItem('eraUmaVez_savedStory');
         }
     }, []);
 
@@ -72,7 +74,6 @@ const App: React.FC = () => {
     const handleGenerateStory = async (formData: StoryFormData) => {
         setAppState('GENERATING_STORY');
 
-        // Helper to remove emoji prefixes used for display in the form
         const stripPrefix = (str: string) => str.split(' ').slice(1).join(' ');
 
         const cleanFormData: StoryFormData = {
@@ -85,8 +86,15 @@ const App: React.FC = () => {
 
         try {
             const storyTextContent = await geminiService.generateStory(cleanFormData);
-            setTextOnlyStory(storyTextContent);
-            setAppState('PREVIEW');
+            
+            if (storyTextContent && storyTextContent.cover && Array.isArray(storyTextContent.pages)) {
+                // Defensive sort to ensure pages are always in order.
+                storyTextContent.pages.sort((a, b) => a.pageNumber - b.pageNumber);
+                setTextOnlyStory(storyTextContent);
+                setAppState('PREVIEW');
+            } else {
+                throw new Error("A resposta do modelo de IA não continha uma estrutura de história válida. O objeto pode estar vazio ou malformado.");
+            }
         } catch (error) {
             handleError("Falha ao gerar o texto da história. Por favor, tente novamente.", error);
         }
@@ -95,25 +103,18 @@ const App: React.FC = () => {
     const handleConfirmStory = async () => {
         if (!textOnlyStory) return;
         
-        // Show loading state on the preview screen button
         setAppState('GENERATING_IMAGES');
 
-        // Initialize storybook with loading states
+        // Allow UI to update to show loading state before blocking thread
+        await new Promise(resolve => setTimeout(resolve, 0));
+
         const initialStorybook: Storybook = {
             cover: { ...textOnlyStory.cover, imageUrl: '', isGeneratingImage: true, mimeType: 'image/png' },
             pages: textOnlyStory.pages.map(p => ({ ...p, imageUrl: '', isGeneratingImage: true, mimeType: 'image/png' }))
         };
         setStorybook(initialStorybook);
-
-        // Immediately switch to the viewer to show progress as images come in
         setAppState('VIEWING'); 
 
-        // Helper to add a delay between API calls to respect rate limits
-        const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-        // --- Start sequential generation ---
-
-        // Generate cover image first
         try {
             const { base64Image, mimeType } = await geminiService.generateImage(textOnlyStory.cover.imagePrompt);
             const imageUrl = `data:${mimeType};base64,${base64Image}`;
@@ -129,32 +130,30 @@ const App: React.FC = () => {
             });
         }
 
-        // Now, generate page images sequentially
-        for (let i = 0; i < textOnlyStory.pages.length; i++) {
-            // Add a delay to be safe with rate limits.
-            await sleep(1500); 
+        // BUGFIX: Generate page images in parallel for a massive speed boost.
+        const pageImagePromises = textOnlyStory.pages.map((page, index) => 
+            geminiService.generateImage(page.imagePrompt)
+                .then(({ base64Image, mimeType }) => {
+                    const imageUrl = `data:${mimeType};base64,${base64Image}`;
+                    setStorybook(current => {
+                        if (!current) return null;
+                        const newPages = [...current.pages];
+                        newPages[index] = { ...newPages[index], imageUrl, isGeneratingImage: false, mimeType };
+                        return { ...current, pages: newPages };
+                    });
+                })
+                .catch(error => {
+                    console.error(`Falha ao gerar imagem para a página ${index + 1}:`, error);
+                    setStorybook(current => {
+                        if (!current) return null;
+                        const newPages = [...current.pages];
+                        newPages[index] = { ...newPages[index], imageUrl: '', isGeneratingImage: false };
+                        return { ...current, pages: newPages };
+                    });
+                })
+        );
 
-            const page = textOnlyStory.pages[i];
-            try {
-                const { base64Image, mimeType } = await geminiService.generateImage(page.imagePrompt);
-                const imageUrl = `data:${mimeType};base64,${base64Image}`;
-                setStorybook(current => {
-                    if (!current) return null;
-                    const newPages = [...current.pages];
-                    newPages[i] = { ...newPages[i], imageUrl, isGeneratingImage: false, mimeType };
-                    return { ...current, pages: newPages };
-                });
-            } catch (error) {
-                console.error(`Failed to generate image for page ${i + 1}:`, error);
-                // Still update the state to stop the spinner for this page
-                setStorybook(current => {
-                    if (!current) return null;
-                    const newPages = [...current.pages];
-                    newPages[i] = { ...newPages[i], imageUrl: '', isGeneratingImage: false };
-                    return { ...current, pages: newPages };
-                });
-            }
-        }
+        await Promise.all(pageImagePromises);
     };
 
     const handleStartImageEdit = (image: ImageForEditing) => {
@@ -173,7 +172,6 @@ const App: React.FC = () => {
 
         const originalState = { ...storybook };
         
-        // Optimistic UI update: show loading on the specific image
         if (imageForEditing.type === 'cover') {
             setStorybook(prev => prev ? ({ ...prev, cover: { ...prev.cover, isGeneratingImage: true } }) : null);
         } else {
@@ -185,7 +183,7 @@ const App: React.FC = () => {
             });
         }
         
-        setAppState('VIEWING'); // Close modal immediately
+        setAppState('VIEWING');
         setImageForEditing(null);
 
         try {
@@ -205,7 +203,59 @@ const App: React.FC = () => {
             }
         } catch (error) {
             handleError("Falha ao editar a imagem. Revertendo.", error);
-            setStorybook(originalState); // Revert on error
+            setStorybook(originalState);
+        }
+    };
+    
+    const handleRegenerateImage = async (imageInfo: { type: 'cover' | 'page'; index: number }) => {
+        if (!storybook) return;
+
+        const { type, index } = imageInfo;
+        const prompt = type === 'cover' ? storybook.cover.imagePrompt : storybook.pages[index].imagePrompt;
+
+        if (!prompt) {
+            handleError("Não foi possível encontrar o prompt para regenerar esta imagem.");
+            return;
+        }
+
+        if (type === 'cover') {
+            setStorybook(prev => prev ? ({ ...prev, cover: { ...prev.cover, isGeneratingImage: true } }) : null);
+        } else {
+            setStorybook(prev => {
+                if (!prev) return null;
+                const newPages = [...prev.pages];
+                newPages[index] = { ...newPages[index], isGeneratingImage: true };
+                return { ...prev, pages: newPages };
+            });
+        }
+
+        try {
+            const { base64Image, mimeType } = await geminiService.generateImage(prompt);
+            const newImageUrl = `data:${mimeType};base64,${base64Image}`;
+
+            if (type === 'cover') {
+                setStorybook(prev => prev ? ({ ...prev, cover: { ...prev.cover, imageUrl: newImageUrl, mimeType, isGeneratingImage: false } }) : null);
+            } else {
+                setStorybook(prev => {
+                    if (!prev) return null;
+                    const newPages = [...prev.pages];
+                    const oldPage = newPages[index];
+                    newPages[index] = { ...oldPage, imageUrl: newImageUrl, mimeType, isGeneratingImage: false };
+                    return { ...prev, pages: newPages };
+                });
+            }
+        } catch (error) {
+            handleError(`Falha ao regenerar a imagem.`, error);
+            if (type === 'cover') {
+                setStorybook(prev => prev ? ({ ...prev, cover: { ...prev.cover, isGeneratingImage: false } }) : null);
+            } else {
+                setStorybook(prev => {
+                    if (!prev) return null;
+                    const newPages = [...prev.pages];
+                    newPages[index] = { ...newPages[index], isGeneratingImage: false };
+                    return { ...prev, pages: newPages };
+                });
+            }
         }
     };
 
@@ -224,9 +274,7 @@ const App: React.FC = () => {
         setTextOnlyStory(null);
         setImageForEditing(null);
         setErrorMessage('');
-        // Clear any query params from URL when restarting
         window.history.replaceState({}, document.title, window.location.pathname);
-        // Also clear the saved story from localStorage
         try {
             localStorage.removeItem('eraUmaVez_savedStory');
         } catch (error) {
@@ -263,20 +311,19 @@ const App: React.FC = () => {
                                 onRestart={handleRestart} 
                                 onEditImage={handleStartImageEdit}
                                 onGenerateSpeech={handleGenerateSpeech}
+                                onRegenerateImage={handleRegenerateImage}
                             />
                             {appState === 'EDITING_IMAGE' && (
                                 <ImageEditorModal 
                                     imageForEditing={imageForEditing} 
                                     onClose={() => { setAppState('VIEWING'); setImageForEditing(null); }}
                                     onEdit={handleFinishImageEdit}
-                                    isEditing={false} // Loading state is handled inside StorybookViewer now
+                                    isEditing={false}
                                 />
                             )}
                         </>
                     );
                 }
-                // If we land here from a shared link, we might not have a story yet.
-                // A loading indicator could be shown, but for now, we show the error/form.
                 if (!window.location.search.includes('story')) {
                     handleError("Estado de visualização inválido: nenhum storybook encontrado.");
                 }

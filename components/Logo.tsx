@@ -13,8 +13,9 @@ export const Logo = ({ className }: LogoProps) => (
   >
     <defs>
       <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" style={{ stopColor: '#2dd4bf' }} />
-        <stop offset="100%" style={{ stopColor: '#d946ef' }} />
+        <stop offset="0%" style={{ stopColor: '#fde047' }} /> {/* Yellow */}
+        <stop offset="50%" style={{ stopColor: '#f472b6' }} /> {/* Pink */}
+        <stop offset="100%" style={{ stopColor: '#a78bfa' }} /> {/* Violet */}
       </linearGradient>
     </defs>
     
@@ -31,7 +32,7 @@ export const Logo = ({ className }: LogoProps) => (
     {/* Book */}
     <path 
       d="M50,78 C25,78 10,68 10,50 L10,30 C10,30 25,25 50,30 C75,25 90,30 90,30 L90,50 C90,68 75,78 50,78 Z M50,32 C30,35 15,40 15,50 C15,65 30,73 50,73 C70,73 85,65 85,50 C85,40 70,35 50,32 Z" 
-      fill="none" 
+      fill="rgba(30, 41, 59, 0.4)"
       stroke="rgba(203, 213, 225, 0.8)"
       strokeWidth="3"
       strokeLinecap="round"

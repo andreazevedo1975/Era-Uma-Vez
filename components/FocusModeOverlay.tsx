@@ -1,14 +1,16 @@
 import React, { useEffect } from 'react';
 import { CloseIcon } from './Icons';
+import { StoryCover } from '../types';
 
 interface FocusModeOverlayProps {
   element: 'image' | 'text';
-  content: string;
+  content: string; // For image URL or page text
+  coverContent?: StoryCover; // Optional prop for cover data
   title: string;
   onClose: () => void;
 }
 
-const FocusModeOverlay: React.FC<FocusModeOverlayProps> = ({ element, content, title, onClose }) => {
+const FocusModeOverlay: React.FC<FocusModeOverlayProps> = ({ element, content, coverContent, title, onClose }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -48,6 +50,11 @@ const FocusModeOverlay: React.FC<FocusModeOverlayProps> = ({ element, content, t
         <div className="flex-grow overflow-auto flex items-center justify-center min-h-0">
             {element === 'image' ? (
                 <img src={content} alt={title} className="max-w-full max-h-full object-contain rounded-md" />
+            ) : coverContent ? (
+                <div className="text-center p-4">
+                    <h1 className="text-4xl lg:text-5xl font-bold text-teal-400">{coverContent.title}</h1>
+                    <p className="text-xl lg:text-2xl text-slate-300 mt-4">por {coverContent.author}</p>
+                </div>
             ) : (
                 <div className="text-slate-200 text-2xl leading-relaxed whitespace-pre-wrap p-4">
                     {content}

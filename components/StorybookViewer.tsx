@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Storybook, ImageForEditing, StoryPage, StoryCover } from '../types';
 import LoadingSpinner from './LoadingSpinner';
-import { ChevronLeftIcon, ChevronRightIcon, RestartIcon, PencilIcon, VolumeUpIcon, DownloadIcon, BookOpenIcon, FocusIcon, FileCodeIcon, ShareIcon, FullscreenIcon, MinimizeIcon, SaveIcon } from './Icons';
+import { ChevronLeftIcon, ChevronRightIcon, RestartIcon, PencilIcon, VolumeUpIcon, DownloadIcon, BookOpenIcon, FocusIcon, FileCodeIcon, ShareIcon, FullscreenIcon, MinimizeIcon, SaveIcon, CloseIcon, HashIcon, RefreshCwIcon } from './Icons';
 import PdfLayoutModal from './PdfLayoutModal';
 import FocusModeOverlay from './FocusModeOverlay';
 
@@ -164,54 +164,154 @@ const generateInteractiveHtml = (storybook: Storybook): string => {
       </body>
       </html>
     `;
-  };
+};
 
 interface StorybookViewerProps {
   storybook: Storybook;
   onRestart: () => void;
   onEditImage: (image: ImageForEditing) => void;
   onGenerateSpeech: (text: string) => Promise<string | null>;
+  onRegenerateImage: (imageInfo: { type: 'cover' | 'page'; index: number }) => void;
 }
 
-// FIX: Replaced buggy playAudio function with a correct implementation using the Web Audio API.
-const playAudio = async (base64Audio: string, onEnded: () => void): Promise<(() => void) | null> => {
-    let audioContext: AudioContext | null = null;
-    try {
+// BUGFIX: Use a single, shared AudioContext for efficiency and stability.
+let audioContext: AudioContext | null = null;
+const getAudioContext = () => {
+    if (!audioContext || audioContext.state === 'closed') {
         audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    }
+    return audioContext;
+};
+
+const playAudio = async (base64Audio: string, onEnded: () => void): Promise<(() => void) | null> => {
+    try {
+        const context = getAudioContext();
+        if (context.state === 'suspended') {
+            await context.resume();
+        }
+        
         const audioBuffer = await decodeAudioData(
             decode(base64Audio),
-            audioContext,
+            context,
             24000,
             1,
         );
         
-        const source = audioContext.createBufferSource();
+        const source = context.createBufferSource();
         source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
+        source.connect(context.destination);
         source.start();
         
-        const contextForCleanup = audioContext;
-        source.onended = () => {
-            onEnded();
-            contextForCleanup.close();
-        };
+        source.onended = onEnded;
 
         return () => {
-            source.stop();
+            try {
+              source.stop();
+            } catch (e) {
+              console.warn("A fonte de áudio não pôde ser interrompida (pode já ter terminado).", e);
+            }
         };
 
     } catch (e) {
-        console.error("Failed to play audio:", e);
+        console.error("Falha ao tocar o áudio:", e);
         alert("Falha ao tocar o áudio.");
-        if (audioContext) {
-            audioContext.close();
-        }
         return null;
     }
 };
 
-const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart, onEditImage, onGenerateSpeech }) => {
-    const [currentPageIndex, setCurrentPageIndex] = useState<number>(0); // 0 is cover
+interface PageSelectorModalProps {
+  storybook: Storybook;
+  totalPages: number;
+  currentPageIndex: number;
+  onSelectPage: (index: number) => void;
+  onClose: () => void;
+}
+
+const PageSelectorModal: React.FC<PageSelectorModalProps> = ({
+  storybook,
+  totalPages,
+  currentPageIndex,
+  onSelectPage,
+  onClose,
+}) => {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"
+      onClick={handleOverlayClick}
+      aria-modal="true"
+      role="dialog"
+    >
+      <div className="glass-card w-full max-w-4xl max-h-[90vh] flex flex-col p-6 animate-zoom-in">
+        <div className="flex justify-between items-center mb-6 flex-shrink-0">
+          <h2 className="flex items-center gap-3 text-2xl font-bold text-gradient font-display">
+            <HashIcon className="w-6 h-6" />
+            <span>Pular para a Página</span>
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors" aria-label="Fechar seletor de página">
+            <CloseIcon className="w-8 h-8" />
+          </button>
+        </div>
+        {/* FIX: The map callback was likely structured incorrectly, causing scope issues. Rewriting the block to ensure variables are correctly scoped within the returned JSX. */}
+        <div className="flex-grow overflow-y-auto pr-2">
+          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4">
+            {Array.from({ length: totalPages }, (_, i) => {
+              const isCover = i === 0;
+              const pageContent = isCover ? storybook.cover : storybook.pages[i - 1];
+              const { imageUrl, isGeneratingImage } = pageContent;
+
+              return (
+                 <button
+                    key={i}
+                    onClick={() => onSelectPage(i)}
+                    className={`
+                        aspect-square rounded-lg transition-all duration-200 transform focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-teal-400 relative overflow-hidden group bg-slate-800
+                        ${currentPageIndex === i ? 'ring-4 ring-teal-400' : 'hover:scale-105'}
+                    `}
+                    aria-label={`Pular para ${isCover ? 'Capa' : `Página ${i}`}`}
+                >
+                    {isGeneratingImage ? (
+                        <div className="w-full h-full flex items-center justify-center">
+                            <LoadingSpinner size="4" />
+                        </div>
+                    ) : imageUrl ? (
+                        <img src={imageUrl} alt={isCover ? 'Capa' : `Página ${i}`} className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-400 text-2xl font-bold">
+                            {isCover ? 'C' : i}
+                        </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-white font-bold text-lg">{isCover ? 'Capa' : i}</span>
+                    </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// FIX: Changed component signature to be more explicit and avoid type inference issues with React.FC.
+export const StorybookViewer = ({ storybook, onRestart, onEditImage, onGenerateSpeech, onRegenerateImage }: StorybookViewerProps): React.ReactElement => {
+    const [currentPageIndex, setCurrentPageIndex] = useState<number>(0);
     const [isNarrating, setIsNarrating] = useState(false);
     const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
     const [focusModeElement, setFocusModeElement] = useState<'image' | 'text' | null>(null);
@@ -219,17 +319,17 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
     const [shareStatus, setShareStatus] = useState<'idle' | 'copied'>('idle');
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isPageSelectorOpen, setIsPageSelectorOpen] = useState(false);
     
     const stopNarrationRef = useRef<(() => void) | null>(null);
 
-    const totalPages = storybook.pages.length + 1; // +1 for cover
+    const totalPages = storybook.pages.length + 1;
     const isCover = currentPageIndex === 0;
     const isLastPage = currentPageIndex === totalPages - 1;
 
     const currentContent: StoryPage | StoryCover = isCover ? storybook.cover : storybook.pages[currentPageIndex - 1];
 
     useEffect(() => {
-        // Stop narration when changing pages
         return () => {
             if (stopNarrationRef.current) {
                 stopNarrationRef.current();
@@ -258,7 +358,6 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
             }
         }
     };
-
 
     const handlePrev = () => {
         if (currentPageIndex > 0) {
@@ -293,11 +392,17 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
         }
     };
     
-    // FIX: Refactored narration logic to work with the new async playAudio function.
+    const handleRegenerateClick = () => {
+        if (isCover) {
+            onRegenerateImage({ type: 'cover', index: 0 });
+        } else {
+            onRegenerateImage({ type: 'page', index: currentPageIndex - 1 });
+        }
+    };
+
     const handleNarrateClick = async () => {
         if (isNarrating && stopNarrationRef.current) {
             stopNarrationRef.current();
-            // onended callback will handle state changes
             return;
         }
 
@@ -347,9 +452,16 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
       if (!storybook) return;
   
       const storyString = JSON.stringify(storybook);
-      const base64Story = btoa(unescape(encodeURIComponent(storyString))); // Handle UTF-8 characters
+      // BUGFIX: Use a robust method to encode Unicode strings to Base64
+      const uint8Array = new TextEncoder().encode(storyString);
+      let binaryString = '';
+      uint8Array.forEach((byte) => {
+          binaryString += String.fromCharCode(byte);
+      });
+      const base64Story = btoa(binaryString);
+      
       const url = new URL(window.location.href);
-      url.search = ''; // Clear existing params
+      url.search = '';
       url.searchParams.set('story', base64Story);
       const shareableLink = url.toString();
   
@@ -382,7 +494,7 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
             const storyString = JSON.stringify(storybook);
             localStorage.setItem('eraUmaVez_savedStory', storyString);
             setSaveStatus('saved');
-            setTimeout(() => setSaveStatus('idle'), 2000); // Reset after 2 seconds
+            setTimeout(() => setSaveStatus('idle'), 2000);
         } catch (error) {
             console.error("Falha ao salvar a história no localStorage:", error);
             alert("Não foi possível salvar a história. O armazenamento local pode estar cheio ou indisponível.");
@@ -404,10 +516,19 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
                 ) : (
                     <div className="text-center text-slate-400 p-4">
                         <p>Falha ao gerar a imagem.</p>
-                        <p>Tente editar para criar uma nova.</p>
+                        <p>Tente regenerar para criar uma nova.</p>
                     </div>
                 )}
                 <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <button
+                        onClick={handleRegenerateClick}
+                        className="bg-black/50 hover:bg-black/75 backdrop-blur-sm text-white p-2 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isGeneratingImage}
+                        aria-label="Regenerar imagem"
+                        title="Regenerar Imagem"
+                    >
+                        <RefreshCwIcon className="w-6 h-6" />
+                    </button>
                     <button
                         onClick={() => setFocusModeElement('image')}
                         className="bg-black/50 hover:bg-black/75 backdrop-blur-sm text-white p-2 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -449,15 +570,12 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
     return (
         <div className={`w-full max-w-7xl mx-auto p-4 animate-fade-in ${isFullscreen ? 'h-screen flex flex-col justify-center' : ''}`}>
              <header className={`glass-card flex justify-between items-center mb-6 p-2 ${isFullscreen ? 'hidden' : ''}`}>
-                {/* Left Side: Title */}
                 <div className="flex items-center gap-3 pl-2 flex-1 min-w-0">
                     <BookOpenIcon className="w-6 h-6 text-teal-400 flex-shrink-0" />
                     <h1 className="text-lg font-bold text-white truncate" title={storybook.cover.title}>
                         {storybook.cover.title}
                     </h1>
                 </div>
-
-                {/* Right Side: Action Buttons */}
                 <div className="flex items-center gap-2 flex-shrink-0">
                     <button onClick={toggleFullscreen} className="flex items-center gap-2 py-2 px-3 rounded-lg transition-colors text-sm font-semibold bg-slate-700/60 hover:bg-slate-700/90 text-white" title={isFullscreen ? "Sair do modo de tela cheia" : "Entrar em modo de tela cheia"}>
                         {isFullscreen ? <MinimizeIcon className="w-5 h-5" /> : <FullscreenIcon className="w-5 h-5" />}
@@ -493,12 +611,9 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
                     transitionDirection === 'prev' ? 'animate-zoom-in-slightly' : ''
                 }`}
             >
-                {/* Image Side */}
                 <div className="flex flex-col items-center">
                    {renderPageContent()}
                 </div>
-
-                {/* Text Side */}
                 <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-6 shadow-2xl h-full flex flex-col justify-between min-h-[450px] lg:min-h-0 relative">
                     <button onClick={() => setFocusModeElement('text')} className="absolute top-4 right-4 bg-slate-700/80 hover:bg-slate-600/80 text-white p-2 rounded-full transition-all z-10" aria-label="Focar no texto" title="Modo de Foco">
                         <FocusIcon className="w-5 h-5" />
@@ -519,23 +634,25 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
                 </div>
             </div>
 
-             {/* Navigation */}
             <footer className={`mt-6 flex justify-center items-center gap-4 ${isFullscreen ? 'hidden' : ''}`}>
-                 <button onClick={handlePrev} disabled={currentPageIndex === 0} className="p-3 bg-slate-800/80 border border-slate-700 rounded-full hover:bg-teal-500 text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all transform hover:scale-110" aria-label="Página anterior">
+                 <button onClick={handlePrev} disabled={currentPageIndex === 0} className="p-3 bg-slate-900/40 border-2 border-slate-600/80 rounded-full backdrop-blur-sm text-white disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-slate-900/40 disabled:border-slate-600/80 disabled:scale-100 transition-all transform hover:scale-110 hover:bg-teal-500 hover:border-teal-400" aria-label="Página anterior">
                     <ChevronLeftIcon className="w-8 h-8" />
                 </button>
-                 <span className="text-lg font-semibold w-48 text-center text-slate-300">
+                <button 
+                    onClick={() => setIsPageSelectorOpen(true)}
+                    className="text-lg font-semibold w-48 text-center text-slate-300 rounded-lg hover:bg-slate-800/60 transition-colors p-2"
+                    title="Pular para a página"
+                >
                     {isCover
                         ? 'Capa'
                         : `Página ${currentPageIndex} de ${totalPages - 1}`
                     }
-                 </span>
-                <button onClick={handleNext} disabled={isLastPage} className="p-3 bg-slate-800/80 border border-slate-700 rounded-full hover:bg-teal-500 text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all transform hover:scale-110" aria-label="Próxima página">
+                </button>
+                <button onClick={handleNext} disabled={isLastPage} className="p-3 bg-slate-900/40 border-2 border-slate-600/80 rounded-full backdrop-blur-sm text-white disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-slate-900/40 disabled:border-slate-600/80 disabled:scale-100 transition-all transform hover:scale-110 hover:bg-teal-500 hover:border-teal-400" aria-label="Próxima página">
                     <ChevronRightIcon className="w-8 h-8" />
                 </button>
             </footer>
 
-            {/* FIX: Corrected typo from isPdfModalОpen to isPdfModalOpen */}
             {isPdfModalOpen && (
                 <PdfLayoutModal 
                     storybook={storybook}
@@ -549,8 +666,9 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
                     content={
                         focusModeElement === 'image'
                             ? currentContent.imageUrl
-                            : (isCover ? `${storybook.cover.title}\n\npor ${storybook.cover.author}` : (currentContent as StoryPage).text)
+                            : isCover ? '' : (currentContent as StoryPage).text
                     }
+                    coverContent={isCover && focusModeElement === 'text' ? storybook.cover : undefined}
                     title={
                         focusModeElement === 'image'
                             ? (isCover ? "Ilustração da Capa" : `Ilustração - Página ${currentPageIndex}`)
@@ -559,8 +677,22 @@ const StorybookViewer: React.FC<StorybookViewerProps> = ({ storybook, onRestart,
                     onClose={() => setFocusModeElement(null)}
                 />
             )}
+
+            {isPageSelectorOpen && (
+                <PageSelectorModal
+                    storybook={storybook}
+                    totalPages={totalPages}
+                    currentPageIndex={currentPageIndex}
+                    onSelectPage={(index) => {
+                        if (index !== currentPageIndex) {
+                            setTransitionDirection(null);
+                            setCurrentPageIndex(index);
+                        }
+                        setIsPageSelectorOpen(false);
+                    }}
+                    onClose={() => setIsPageSelectorOpen(false)}
+                />
+            )}
         </div>
     );
 };
-
-export default StorybookViewer;
