@@ -210,15 +210,11 @@ const App: React.FC = () => {
         if (!storybook) return;
 
         const { type, index } = imageInfo;
-        const prompt = type === 'cover' ? storybook.cover.imagePrompt : storybook.pages[index].imagePrompt;
+        const originalState = { ...storybook };
 
-        if (!prompt) {
-            handleError("Não foi possível encontrar o prompt para regenerar esta imagem.");
-            return;
-        }
-
+        // Set loading state for the specific image being regenerated
         if (type === 'cover') {
-            setStorybook(prev => prev ? ({ ...prev, cover: { ...prev.cover, isGeneratingImage: true } }) : null);
+            setStorybook(prev => prev ? { ...prev, cover: { ...prev.cover, isGeneratingImage: true } } : null);
         } else {
             setStorybook(prev => {
                 if (!prev) return null;
@@ -229,32 +225,32 @@ const App: React.FC = () => {
         }
 
         try {
+            // Use the original prompt from before the loading state was set
+            const prompt = type === 'cover' 
+                ? originalState.cover.imagePrompt 
+                : originalState.pages[index].imagePrompt;
+
+            if (!prompt) {
+                throw new Error("Não foi encontrado um prompt de imagem para regenerar.");
+            }
+
             const { base64Image, mimeType } = await geminiService.generateImage(prompt);
             const newImageUrl = `data:${mimeType};base64,${base64Image}`;
 
+            // Update the storybook with the newly generated image
             if (type === 'cover') {
-                setStorybook(prev => prev ? ({ ...prev, cover: { ...prev.cover, imageUrl: newImageUrl, mimeType, isGeneratingImage: false } }) : null);
+                setStorybook(prev => prev ? { ...prev, cover: { ...prev.cover, imageUrl: newImageUrl, mimeType, isGeneratingImage: false } } : null);
             } else {
                 setStorybook(prev => {
                     if (!prev) return null;
                     const newPages = [...prev.pages];
-                    const oldPage = newPages[index];
-                    newPages[index] = { ...oldPage, imageUrl: newImageUrl, mimeType, isGeneratingImage: false };
+                    newPages[index] = { ...newPages[index], imageUrl: newImageUrl, mimeType, isGeneratingImage: false };
                     return { ...prev, pages: newPages };
                 });
             }
         } catch (error) {
-            handleError(`Falha ao regenerar a imagem.`, error);
-            if (type === 'cover') {
-                setStorybook(prev => prev ? ({ ...prev, cover: { ...prev.cover, isGeneratingImage: false } }) : null);
-            } else {
-                setStorybook(prev => {
-                    if (!prev) return null;
-                    const newPages = [...prev.pages];
-                    newPages[index] = { ...newPages[index], isGeneratingImage: false };
-                    return { ...prev, pages: newPages };
-                });
-            }
+            handleError("Falha ao regenerar a imagem. Revertendo para a imagem original.", error);
+            setStorybook(originalState); // Revert on failure
         }
     };
 
@@ -262,8 +258,7 @@ const App: React.FC = () => {
         try {
             return await geminiService.generateSpeech(text);
         } catch (error) {
-            console.error("Failed to generate speech", error);
-            alert("Desculpe, não foi possível gerar a narração no momento.");
+            handleError("Falha ao gerar a narração.", error);
             return null;
         }
     }, []);
@@ -273,13 +268,9 @@ const App: React.FC = () => {
         setTextOnlyStory(null);
         setImageForEditing(null);
         setErrorMessage('');
-        window.history.replaceState({}, document.title, window.location.pathname);
-        try {
-            localStorage.removeItem('eraUmaVez_savedStory');
-        } catch (error) {
-            console.error("Não foi possível remover a história salva do localStorage", error);
-        }
         setAppState('FORM');
+        localStorage.removeItem('eraUmaVez_savedStory');
+        window.history.replaceState({}, document.title, window.location.pathname);
     };
 
     const renderContent = () => {
@@ -292,66 +283,65 @@ const App: React.FC = () => {
                 if (textOnlyStory) {
                     return <StoryPreview story={textOnlyStory} onConfirm={handleConfirmStory} onCancel={handleRestart} isGeneratingImages={false} />;
                 }
-                handleError("Estado de pré-visualização inválido: nenhum texto de história encontrado.");
+                handleRestart();
                 return null;
             case 'GENERATING_IMAGES':
                  if (textOnlyStory) {
                     return <StoryPreview story={textOnlyStory} onConfirm={handleConfirmStory} onCancel={handleRestart} isGeneratingImages={true} />;
                 }
-                handleError("Estado de geração de imagem inválido: nenhum texto de história encontrado.");
+                handleRestart();
                 return null;
             case 'VIEWING':
-            case 'EDITING_IMAGE':
                 if (storybook) {
-                    return (
-                        <>
-                            <StorybookViewer 
-                                storybook={storybook} 
-                                onRestart={handleRestart} 
-                                onEditImage={handleStartImageEdit}
-                                onGenerateSpeech={handleGenerateSpeech}
-                                onRegenerateImage={handleRegenerateImage}
-                            />
-                            {appState === 'EDITING_IMAGE' && (
-                                <ImageEditorModal 
-                                    imageForEditing={imageForEditing} 
-                                    onClose={() => { setAppState('VIEWING'); setImageForEditing(null); }}
-                                    onEdit={handleFinishImageEdit}
-                                    isEditing={false}
-                                />
-                            )}
-                        </>
-                    );
+                    return <StorybookViewer 
+                        storybook={storybook} 
+                        onRestart={handleRestart} 
+                        onEditImage={handleStartImageEdit}
+                        onGenerateSpeech={handleGenerateSpeech}
+                        onRegenerateImage={handleRegenerateImage}
+                    />;
                 }
-                if (!window.location.search.includes('story')) {
-                    handleError("Estado de visualização inválido: nenhum storybook encontrado.");
-                }
-                return <StoryForm onSubmit={handleGenerateStory} isGenerating={false} />;
-
+                handleRestart();
+                return null;
             case 'ERROR':
                 return (
-                    <div className="text-center p-8 max-w-2xl mx-auto glass-card">
-                        <h2 className="text-2xl font-bold text-red-500 mb-4">Ocorreu um Erro</h2>
-                        <p className="text-slate-300 mb-6">{errorMessage}</p>
-                        <button
-                            onClick={handleRestart}
-                            className="flex items-center justify-center gap-2 py-3 px-6 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 rounded-lg text-lg text-white font-semibold shadow-lg transition-transform transform hover:scale-105"
-                        >
-                            <RestartIcon className="w-6 h-6" />
-                            <span>Tentar Novamente</span>
-                        </button>
+                    <div className="flex flex-col items-center justify-center min-h-screen text-center p-4">
+                        <div className="glass-card p-8">
+                            <h2 className="text-3xl font-bold text-red-500 mb-4">Ops! Algo deu errado.</h2>
+                            <p className="text-slate-300 mb-6">{errorMessage}</p>
+                            <button onClick={handleRestart} className="flex items-center justify-center gap-2 py-3 px-6 bg-slate-600 hover:bg-slate-700 rounded-lg text-lg text-white font-semibold shadow-lg transition-transform transform hover:scale-105">
+                                <RestartIcon className="w-6 h-6" />
+                                <span>Tente Novamente</span>
+                            </button>
+                        </div>
                     </div>
                 );
             default:
-                return <div>Estado desconhecido</div>;
+                 handleRestart();
+                 return null;
         }
     };
-    
+
     return (
-        <main className="w-full min-h-screen flex flex-col items-center justify-center p-4">
-            <div className="w-full">
-                {renderContent()}
-            </div>
+        <main className="min-h-screen">
+            {renderContent()}
+            {appState === 'EDITING_IMAGE' && imageForEditing && (
+                <ImageEditorModal 
+                    imageForEditing={imageForEditing}
+                    onClose={() => {
+                        setImageForEditing(null);
+                        setAppState('VIEWING');
+                    }}
+                    onEdit={handleFinishImageEdit}
+                    isEditing={
+                        storybook ? (
+                            imageForEditing.type === 'cover' ? 
+                            storybook.cover.isGeneratingImage : 
+                            storybook.pages[imageForEditing.index].isGeneratingImage
+                        ) : false
+                    }
+                />
+            )}
         </main>
     );
 };

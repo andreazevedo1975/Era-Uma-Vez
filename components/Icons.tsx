@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 type IconProps = React.SVGProps<SVGSVGElement>;
@@ -210,5 +209,17 @@ export const RefreshCwIcon = (props: IconProps) => (
     <path d="M21 12A9 9 0 0 0 6 5.3L3 8" />
     <path d="M21 22v-6h-6" />
     <path d="M3 12a9 9 0 0 0 15 6.7l3-2.7" />
+  </svg>
+);
+
+export const PlayIcon = (props: IconProps) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M6 3v18l15-9z"></path>
+  </svg>
+);
+
+export const PauseIcon = (props: IconProps) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M8 7h3v10H8zm5 0h3v10h-3z"></path>
   </svg>
 );
