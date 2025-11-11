@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { StoryFormData, Storybook, ImageForEditing } from './types';
 import StoryForm from './components/StoryForm';

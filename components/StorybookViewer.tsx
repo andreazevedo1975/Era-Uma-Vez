@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Storybook, ImageForEditing, StoryPage, StoryCover } from '../types';
 import LoadingSpinner from './LoadingSpinner';
-import { ChevronLeftIcon, ChevronRightIcon, RestartIcon, PencilIcon, VolumeUpIcon, DownloadIcon, BookOpenIcon, FocusIcon, FileCodeIcon, ShareIcon, FullscreenIcon, MinimizeIcon, SaveIcon, CloseIcon, HashIcon, RefreshCwIcon } from './Icons';
+import { ChevronLeftIcon, ChevronRightIcon, RestartIcon, PencilIcon, VolumeUpIcon, DownloadIcon, BookOpenIcon, FocusIcon, FileCodeIcon, ShareIcon, FullscreenIcon, MinimizeIcon, SaveIcon, CloseIcon, HashIcon, RefreshCwIcon, MountainIcon } from './Icons';
 import PdfLayoutModal from './PdfLayoutModal';
 import FocusModeOverlay from './FocusModeOverlay';
 
@@ -292,8 +291,9 @@ const PageSelectorModal: React.FC<PageSelectorModalProps> = ({
                     ) : imageUrl ? (
                         <img src={imageUrl} alt={isCover ? 'Capa' : `Página ${i}`} className="w-full h-full object-cover" />
                     ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-400 text-2xl font-bold">
-                            {isCover ? 'C' : i}
+                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 p-2">
+                            <MountainIcon className="w-6 h-6" />
+                            <span className="text-xs mt-1 font-semibold text-slate-400">{isCover ? 'Capa' : i}</span>
                         </div>
                     )}
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
